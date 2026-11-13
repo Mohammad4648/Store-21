@@ -1,0 +1,6 @@
+{
+  "name": "سوق تشين",
+  "description": "منصة تجارة إلكترونية ثلاثية الأبعاد تدعم الدفع بالبلوك تشين، وإنشاء قنوات المتاجر، والبث المباشر التفاعلي، ومجموعات العملاء، والربط مع أشهر منصات التجارة.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

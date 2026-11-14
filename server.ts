@@ -16,10 +16,12 @@ import {
 } from './src/data/initialData.ts';
 import type {
   ActiveSession,
+  ChannelMember,
   ChannelPost,
   ChatMessage,
   ChatThread,
   CurrencyBalance,
+  GroupPermissions,
   OrderRecord,
   PlatformId,
   PlatformIntegration,
@@ -30,6 +32,12 @@ import type {
   UserProfile,
   WalletTransactionRecord,
 } from './src/types/commerce.ts';
+import {
+  canUserPostInGroup,
+  isChannelAdmin,
+  normalizeHandle,
+  resolveGroupPermissions,
+} from './src/utils/commerceLogic.ts';
 
 interface ServerIntegrationSecret {
   platform: PlatformId;
@@ -79,17 +87,44 @@ function createDefaultState(): PersistedState {
 }
 
 function loadState(): PersistedState {
+  const def = createDefaultState();
   try {
     if (fs.existsSync(STATE_FILE)) {
       const raw = fs.readFileSync(STATE_FILE, 'utf-8');
       const parsed = JSON.parse(raw) as Partial<PersistedState>;
-      const def = createDefaultState();
-      return { ...def, ...parsed };
+      const merged: PersistedState = { ...def, ...parsed };
+
+      // Ensure channels and threads retain groupPermissions & member defaults if loaded from older snapshot
+      merged.channels = (merged.channels || def.channels).map((ch) => {
+        const seedCh = def.channels.find((d) => d.id === ch.id);
+        return {
+          ...ch,
+          groupPermissions: resolveGroupPermissions(undefined, {
+            ...(seedCh || ch),
+            ...ch,
+            groupPermissions: ch.groupPermissions || seedCh?.groupPermissions,
+          }),
+          members: Array.isArray(ch.members) ? ch.members : seedCh?.members || [],
+        };
+      });
+
+      merged.threads = (merged.threads || def.threads).map((tr) => {
+        const seedTr = def.threads.find((d) => d.id === tr.id);
+        const linkedCh = merged.channels.find((c) => c.id === tr.channelId);
+        return {
+          ...tr,
+          groupPermissions: tr.kind === 'group'
+            ? resolveGroupPermissions({ ...(seedTr || tr), ...tr, groupPermissions: tr.groupPermissions || seedTr?.groupPermissions }, linkedCh)
+            : tr.groupPermissions,
+        };
+      });
+
+      return merged;
     }
   } catch {
     // Fallback to clean initial state if state file is unreadable
   }
-  return createDefaultState();
+  return def;
 }
 
 function saveState(state: PersistedState): void {
@@ -398,24 +433,29 @@ async function startServer() {
       res.status(400).json({ error: 'Channel name is required' });
       return;
     }
-    state.channels.unshift(ch);
-    if (ch.linkedGroupEnabled) {
+    const normalizedChannel: StoreChannel = {
+      ...ch,
+      groupPermissions: resolveGroupPermissions(undefined, ch),
+    };
+    state.channels.unshift(normalizedChannel);
+    if (normalizedChannel.linkedGroupEnabled) {
       state.threads.unshift({
-        id: ch.linkedGroupId,
+        id: normalizedChannel.linkedGroupId,
         kind: 'group',
-        channelId: ch.id,
-        title: ch.linkedGroupName,
-        titleEn: ch.linkedGroupNameEn,
-        subtitle: ch.description,
-        subtitleEn: ch.descriptionEn,
-        avatar: ch.avatarImage,
-        verified: ch.verified,
-        membersCount: ch.members.length,
+        channelId: normalizedChannel.id,
+        title: normalizedChannel.linkedGroupName,
+        titleEn: normalizedChannel.linkedGroupNameEn,
+        subtitle: normalizedChannel.description,
+        subtitleEn: normalizedChannel.descriptionEn,
+        avatar: normalizedChannel.avatarImage,
+        verified: normalizedChannel.verified,
+        membersCount: normalizedChannel.members.length,
         unreadCount: 0,
+        groupPermissions: normalizedChannel.groupPermissions,
       });
     }
     saveState(state);
-    res.json({ channel: ch, threads: state.threads });
+    res.json({ channel: normalizedChannel, threads: state.threads });
   });
 
   app.patch('/api/channels/:id', (req, res) => {
@@ -430,10 +470,86 @@ async function startServer() {
     res.json({ channel: state.channels[idx] });
   });
 
+  app.post('/api/channels/:id/members', (req, res) => {
+    const ch = state.channels.find((c) => c.id === req.params.id);
+    if (!ch) {
+      res.status(404).json({ error: 'Channel not found' });
+      return;
+    }
+    if (!isChannelAdmin(ch, state.profile.username)) {
+      res.status(403).json({ error: 'Only channel administrators can add or manage members.' });
+      return;
+    }
+    const { name, handle, role } = req.body as {
+      name: string;
+      handle: string;
+      role?: 'moderator' | 'member';
+    };
+    if (!name?.trim() || !handle?.trim()) {
+      res.status(400).json({ error: 'Member name and handle are required' });
+      return;
+    }
+    const formattedHandle = handle.trim().startsWith('@') ? handle.trim() : `@${handle.trim()}`;
+    if (ch.members.some((m) => normalizeHandle(m.handle) === normalizeHandle(formattedHandle))) {
+      res.status(409).json({ error: 'Member already exists in this channel' });
+      return;
+    }
+    const newMember: ChannelMember = {
+      id: `mem-${Date.now()}`,
+      name: name.trim(),
+      handle: formattedHandle,
+      role: role === 'moderator' ? 'moderator' : 'member',
+      muted: false,
+      canPost: true,
+      joinedAt: new Date().toISOString().slice(0, 10),
+    };
+    ch.members.push(newMember);
+    const linkedThread = state.threads.find((t) => t.kind === 'group' && t.channelId === ch.id);
+    if (linkedThread) {
+      linkedThread.membersCount = Math.max(linkedThread.membersCount || 0, ch.members.length);
+    }
+    saveState(state);
+    res.json({ channel: ch, member: newMember });
+  });
+
+  app.patch('/api/channels/:id/members/:memberId', (req, res) => {
+    const ch = state.channels.find((c) => c.id === req.params.id);
+    if (!ch) {
+      res.status(404).json({ error: 'Channel not found' });
+      return;
+    }
+    if (!isChannelAdmin(ch, state.profile.username)) {
+      res.status(403).json({ error: 'Only channel administrators can modify member roles or permissions.' });
+      return;
+    }
+    const member = ch.members.find((m) => m.id === req.params.memberId);
+    if (!member) {
+      res.status(404).json({ error: 'Member not found' });
+      return;
+    }
+    const { role, muted, canPost } = req.body as Partial<Pick<ChannelMember, 'role' | 'muted' | 'canPost'>>;
+    if (member.role !== 'owner' && (role === 'moderator' || role === 'member')) {
+      member.role = role;
+    }
+    if (typeof muted === 'boolean' && member.role !== 'owner') {
+      member.muted = muted;
+    }
+    if (typeof canPost === 'boolean') {
+      member.canPost = canPost;
+    }
+    saveState(state);
+    res.json({ channel: ch, member });
+  });
+
   app.post('/api/products', (req, res) => {
     const { product, createPost } = req.body as { product: Product; createPost?: boolean };
     if (!product?.title?.trim()) {
       res.status(400).json({ error: 'Product title is required' });
+      return;
+    }
+    const ch = state.channels.find((c) => c.id === product.channelId);
+    if (ch && !isChannelAdmin(ch, state.profile.username)) {
+      res.status(403).json({ error: 'Only channel administrators can publish products to this channel.' });
       return;
     }
     state.products.unshift(product);
@@ -443,9 +559,12 @@ async function startServer() {
         id: `post-${Date.now()}`,
         channelId: product.channelId,
         type: 'product',
+        authorName: state.profile.name,
+        authorHandle: state.profile.username,
         text: product.description,
         textEn: product.descriptionEn,
         productId: product.id,
+        allowComments: true,
         timestamp: 'الآن',
         viewsCount: 1,
         reactions: { heart: 0, thumbs: 0, fire: 0 },
@@ -505,7 +624,68 @@ async function startServer() {
       res.status(400).json({ error: 'Channel ID required' });
       return;
     }
-    state.posts.unshift(post);
+    const ch = state.channels.find((c) => c.id === post.channelId);
+    if (!ch) {
+      res.status(404).json({ error: 'Channel not found' });
+      return;
+    }
+    if (!isChannelAdmin(ch, state.profile.username)) {
+      res.status(403).json({ error: 'Only channel administrators can publish posts in this channel.' });
+      return;
+    }
+    const storedPost: ChannelPost = {
+      ...post,
+      authorName: post.authorName || state.profile.name,
+      authorHandle: post.authorHandle || state.profile.username,
+      allowComments: post.allowComments !== false,
+    };
+    state.posts.unshift(storedPost);
+    saveState(state);
+    res.json({ post: storedPost });
+  });
+
+  app.patch('/api/posts/:id/pin', (req, res) => {
+    const post = state.posts.find((p) => p.id === req.params.id);
+    if (!post) {
+      res.status(404).json({ error: 'Post not found' });
+      return;
+    }
+    const ch = state.channels.find((c) => c.id === post.channelId);
+    if (ch && !isChannelAdmin(ch, state.profile.username)) {
+      res.status(403).json({ error: 'Only channel administrators can pin or unpin posts.' });
+      return;
+    }
+    post.pinned = !post.pinned;
+    saveState(state);
+    res.json({ post });
+  });
+
+  app.post('/api/posts/:id/vote', (req, res) => {
+    const { optionId } = req.body as { optionId: string };
+    const post = state.posts.find((p) => p.id === req.params.id);
+    if (!post || post.type !== 'poll' || !Array.isArray(post.pollOptions)) {
+      res.status(404).json({ error: 'Poll post not found' });
+      return;
+    }
+    const voter = normalizeHandle(state.profile.username) || 'guest';
+    const targetOption = post.pollOptions.find((o) => o.id === optionId);
+    if (!targetOption) {
+      res.status(400).json({ error: 'Invalid poll option' });
+      return;
+    }
+    const alreadyOnTarget = (targetOption.votedByHandles || []).some(
+      (h) => normalizeHandle(h) === voter
+    );
+    post.pollOptions = post.pollOptions.map((opt) => {
+      const list = (opt.votedByHandles || []).filter((h) => normalizeHandle(h) !== voter);
+      const hadVote = (opt.votedByHandles || []).some((h) => normalizeHandle(h) === voter);
+      let votes = hadVote ? Math.max(0, opt.votes - 1) : opt.votes;
+      if (!alreadyOnTarget && opt.id === optionId) {
+        list.push(state.profile.username);
+        votes += 1;
+      }
+      return { ...opt, votes, votedByHandles: list };
+    });
     saveState(state);
     res.json({ post });
   });
@@ -531,6 +711,10 @@ async function startServer() {
     const post = state.posts.find((p) => p.id === id);
     if (!post || !text?.trim()) {
       res.status(400).json({ error: 'Valid post and comment text required' });
+      return;
+    }
+    if (post.allowComments === false) {
+      res.status(403).json({ error: 'Comments are disabled on this post.' });
       return;
     }
     post.comments.push({
@@ -571,6 +755,11 @@ async function startServer() {
       res.status(404).json({ error: 'Live broadcast not found' });
       return;
     }
+    const ch = state.channels.find((c) => c.id === post.channelId);
+    if (ch && !isChannelAdmin(ch, state.profile.username)) {
+      res.status(403).json({ error: 'Only channel administrators can control live broadcast status.' });
+      return;
+    }
     post.liveActive = Boolean(liveActive);
     post.hasReplay = typeof hasReplay === 'boolean' ? hasReplay : !post.liveActive;
     saveState(state);
@@ -607,11 +796,113 @@ async function startServer() {
     res.json({ thread, threads: state.threads });
   });
 
+  app.post('/api/chats/join-group', (req, res) => {
+    const { channelId } = req.body as { channelId: string };
+    const ch = state.channels.find((c) => c.id === channelId);
+    if (!ch || !ch.linkedGroupEnabled) {
+      res.status(404).json({ error: 'Discussion group not available for this channel' });
+      return;
+    }
+    const alreadyMember = ch.members.some(
+      (m) => normalizeHandle(m.handle) === normalizeHandle(state.profile.username)
+    );
+    if (!alreadyMember) {
+      ch.members.push({
+        id: `mem-${Date.now()}`,
+        name: state.profile.name,
+        handle: state.profile.username,
+        role: 'member',
+        muted: false,
+        canPost: true,
+        joinedAt: new Date().toISOString().slice(0, 10),
+      });
+    }
+    let thread = state.threads.find(
+      (t) => t.kind === 'group' && (t.channelId === ch.id || t.id === ch.linkedGroupId)
+    );
+    if (!thread) {
+      thread = {
+        id: ch.linkedGroupId,
+        kind: 'group',
+        channelId: ch.id,
+        title: ch.linkedGroupName,
+        titleEn: ch.linkedGroupNameEn,
+        subtitle: ch.linkedGroupDescription || ch.description,
+        subtitleEn: ch.linkedGroupDescriptionEn || ch.descriptionEn,
+        avatar: ch.avatarImage,
+        verified: ch.verified,
+        membersCount: Math.max(ch.members.length, 1),
+        unreadCount: 0,
+        groupPermissions: resolveGroupPermissions(undefined, ch),
+      };
+      state.threads.unshift(thread);
+    } else {
+      thread.membersCount = Math.max(thread.membersCount || 0, ch.members.length);
+    }
+    saveState(state);
+    res.json({ thread, threads: state.threads, channel: ch });
+  });
+
+  app.patch('/api/threads/:id/permissions', (req, res) => {
+    const thread = state.threads.find((t) => t.id === req.params.id);
+    if (!thread || thread.kind !== 'group') {
+      res.status(404).json({ error: 'Group thread not found' });
+      return;
+    }
+    const ch = thread.channelId ? state.channels.find((c) => c.id === thread.channelId) : undefined;
+    if (ch && !isChannelAdmin(ch, state.profile.username)) {
+      res.status(403).json({ error: 'Only group administrators can modify group posting permissions.' });
+      return;
+    }
+    const nextPermissions: GroupPermissions = {
+      ...resolveGroupPermissions(thread, ch),
+      ...(req.body as Partial<GroupPermissions>),
+    };
+    thread.groupPermissions = nextPermissions;
+    if (ch) {
+      ch.groupPermissions = nextPermissions;
+    }
+    saveState(state);
+    res.json({ thread, channel: ch });
+  });
+
   app.post('/api/chats/messages', (req, res) => {
     const msg = req.body as ChatMessage;
-    if (!msg?.threadId || (!msg.text?.trim() && !msg.attachedProductId && !msg.media)) {
+    if (
+      !msg?.threadId ||
+      (!msg.text?.trim() && !msg.attachedProductId && !msg.media && !msg.forwardedPost)
+    ) {
       res.status(400).json({ error: 'Thread ID and content required' });
       return;
+    }
+    const thread = state.threads.find((t) => t.id === msg.threadId);
+    const ch = thread?.channelId ? state.channels.find((c) => c.id === thread.channelId) : undefined;
+    if (thread?.kind === 'group') {
+      const check = canUserPostInGroup(thread, ch, state.profile.username);
+      if (!check.allowed) {
+        const reasonMap = {
+          muted: 'You are muted in this group.',
+          admins_only: 'Only group administrators can send messages right now.',
+          not_approved: 'Sending messages is restricted to approved members.',
+          ok: '',
+        } as const;
+        res.status(403).json({ error: reasonMap[check.reason] });
+        return;
+      }
+      if (!check.isAdmin) {
+        if (msg.media && !check.permissions.allowMedia) {
+          res.status(403).json({ error: 'Media attachments are disabled for members in this group.' });
+          return;
+        }
+        if ((msg.attachedProductId || msg.forwardedPost) && !check.permissions.allowProductLinks) {
+          res.status(403).json({ error: 'Product links and forwards are disabled for members in this group.' });
+          return;
+        }
+        if (msg.replyTo && !check.permissions.allowMemberReplies) {
+          res.status(403).json({ error: 'Replies are disabled for members in this group.' });
+          return;
+        }
+      }
     }
     const storedMsg: ChatMessage = {
       ...msg,

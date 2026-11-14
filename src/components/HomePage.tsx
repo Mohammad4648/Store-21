@@ -109,34 +109,34 @@ export const HomePage: React.FC<HomePageProps> = ({
   }, [products, selectedCategory, only3D, q]);
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8 sm:space-y-10">
       {/* Section 1: Recommended Channels */}
-      <section aria-labelledby="recommended-channels-heading" className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
+      <section aria-labelledby="recommended-channels-heading" className="space-y-3.5 sm:space-y-4">
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
             <h1
               id="recommended-channels-heading"
-              className="font-display text-xl font-extrabold text-[#141518] sm:text-2xl"
+              className="font-display text-lg font-extrabold text-[#141518] sm:text-2xl"
             >
               {lang === 'ar' ? 'القنوات المقترحة' : 'Recommended Channels'}
             </h1>
             <p className="mt-1 text-xs text-[#6B7280]">
               {lang === 'ar'
-                ? 'تابع قنوات المتاجر الموثوقة للوصول إلى المنشورات والمنتجات والبث المباشر ومجموعات النقاش.'
-                : 'Follow merchant channels for updates, products, live broadcasts, and discussions in one place.'}
+                ? 'تابع قنوات المتاجر الموثوقة للوصول إلى المنشورات والمنتجات والبث المباشر.'
+                : 'Follow merchant channels for updates, products, and live broadcasts.'}
             </p>
           </div>
           <button
             type="button"
             onClick={onNavigateChannels}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#059669] hover:underline whitespace-nowrap"
+            className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-[#059669] hover:underline whitespace-nowrap"
           >
             <span>{t.common.viewAll}</span>
             <ArrowIcon className="h-3.5 w-3.5" />
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="-mx-3 flex snap-x snap-mandatory gap-3.5 overflow-x-auto px-3 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4">
           {recommendedChannels.map((ch) => {
             const hasLive = posts.some(
               (p) => p.channelId === ch.id && p.type === 'live' && p.liveActive !== false
@@ -144,7 +144,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             return (
               <article
                 key={ch.id}
-                className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[#D1D5DB] hover:shadow-sm"
+                className="group flex w-[276px] shrink-0 snap-start flex-col justify-between overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[#D1D5DB] hover:shadow-sm sm:w-auto sm:shrink"
               >
                 <button
                   type="button"
@@ -245,7 +245,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2">
             {recentPostsAndUpdates.map((post) => {
               const ch = channels.find((c) => c.id === post.channelId);
               const isLive = post.type === 'live';
@@ -253,7 +253,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               return (
                 <article
                   key={post.id}
-                  className="flex flex-col justify-between rounded-2xl border border-[#E5E7EB] bg-white p-5"
+                  className="flex flex-col justify-between rounded-2xl border border-[#E5E7EB] bg-white p-4 sm:p-5"
                 >
                   <div>
                     <div className="flex items-center justify-between gap-3">
@@ -377,16 +377,16 @@ export const HomePage: React.FC<HomePageProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
             <div
               role="group"
               aria-label={lang === 'ar' ? 'تصفية حسب الفئة' : 'Filter by category'}
-              className="flex flex-wrap items-center gap-1 rounded-xl border border-[#E5E7EB] bg-white p-1"
+              className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-xl border border-[#E5E7EB] bg-white p-1 sm:flex-initial"
             >
               <button
                 type="button"
                 onClick={() => setSelectedCategory('all')}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
                   selectedCategory === 'all'
                     ? 'bg-[#141518] text-white'
                     : 'text-[#6B7280] hover:text-[#141518]'
@@ -399,7 +399,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                   key={cat.key}
                   type="button"
                   onClick={() => setSelectedCategory(cat.key)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
                     selectedCategory === cat.key
                       ? 'bg-[#141518] text-white'
                       : 'text-[#6B7280] hover:text-[#141518]'
@@ -414,7 +414,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               type="button"
               onClick={() => setOnly3D((prev) => !prev)}
               aria-pressed={only3D}
-              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors whitespace-nowrap ${
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors whitespace-nowrap ${
                 only3D
                   ? 'border-[#059669] bg-[#ECFDF5] text-[#059669]'
                   : 'border-[#E5E7EB] bg-white text-[#4B5563] hover:text-[#141518]'

@@ -16,7 +16,23 @@ export type PlatformId = 'shopify' | 'woocommerce' | 'salla' | 'zid';
 
 export type IntegrationStatus = 'connected' | 'disconnected' | 'pending' | 'failed';
 
-export type ChannelPostType = 'announcement' | 'product' | 'live';
+export type ChannelPostType = 'announcement' | 'product' | 'live' | 'poll';
+
+export type GroupPostingPolicy = 'all' | 'admins_only' | 'approved_only';
+
+export interface GroupPermissions {
+  postingPolicy: GroupPostingPolicy;
+  allowMedia: boolean;
+  allowProductLinks: boolean;
+  allowMemberReplies: boolean;
+}
+
+export interface PollOption {
+  id: string;
+  text: string;
+  votes: number;
+  votedByHandles?: string[];
+}
 
 export interface ProductReview {
   id: string;
@@ -62,6 +78,7 @@ export interface ChannelMember {
   handle: string;
   role: 'owner' | 'moderator' | 'member';
   muted: boolean;
+  canPost?: boolean;
   joinedAt: string;
 }
 
@@ -88,6 +105,7 @@ export interface StoreChannel {
   linkedGroupNameEn: string;
   linkedGroupDescription?: string;
   linkedGroupDescriptionEn?: string;
+  groupPermissions?: GroupPermissions;
   externalLinks?: { label: string; url: string }[];
   connectedPlatforms: PlatformId[];
   members: ChannelMember[];
@@ -104,11 +122,16 @@ export interface ChannelPost {
   id: string;
   channelId: string;
   type: ChannelPostType;
+  authorName?: string;
+  authorHandle?: string;
   text: string;
   textEn: string;
   image?: string;
   videoUrl?: string;
   productId?: string;
+  pinned?: boolean;
+  allowComments?: boolean;
+  pollOptions?: PollOption[];
   liveViewerCount?: number;
   liveActive?: boolean;
   hasReplay?: boolean;
@@ -133,6 +156,16 @@ export interface MessageMediaAttachment {
   durationSec?: number;
 }
 
+export interface ForwardedChannelPostSummary {
+  postId: string;
+  channelId: string;
+  channelName: string;
+  channelAvatar: string;
+  text: string;
+  image?: string;
+  productId?: string;
+}
+
 export interface ChatMessage {
   id: string;
   threadId: string;
@@ -144,6 +177,7 @@ export interface ChatMessage {
   edited?: boolean;
   deliveryStatus?: 'sent' | 'delivered' | 'read';
   attachedProductId?: string;
+  forwardedPost?: ForwardedChannelPostSummary;
   replyTo?: {
     id: string;
     authorName: string;
@@ -171,6 +205,7 @@ export interface ChatThread {
   membersCount?: number;
   unreadCount: number;
   pinned?: boolean;
+  groupPermissions?: GroupPermissions;
 }
 
 export interface PlatformIntegration {

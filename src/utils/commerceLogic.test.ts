@@ -9,12 +9,21 @@ import {
   INITIAL_PRODUCTS,
 } from '../data/initialData.ts';
 import {
+  canUserPostInGroup,
   computeCartSummary,
   computePortfolioBalances,
   filterChatThreads,
   filterMessagesInThread,
+  getCartItemKey,
+  getCartSelectionState,
   getChannelContentCounts,
+  isChannelAdmin,
   localizeTimestamp,
+  pruneSelectedCartKeys,
+  removeSelectedCartItems,
+  sortChannelPostsPinnedFirst,
+  toggleCartItemSelection,
+  toggleSelectAllCartItems,
 } from './commerceLogic.ts';
 
 test('filterChatThreads filters unified private and group threads by kind and search', () => {
@@ -83,5 +92,80 @@ test('localizeTimestamp translates relative Arabic timestamps in English mode', 
   assert.equal(localizeTimestamp('قبل ساعة', 'en'), '1h ago');
   assert.equal(localizeTimestamp('الآن · مباشر', 'en'), 'Now · Live');
   assert.equal(localizeTimestamp('قبل ساعة', 'ar'), 'قبل ساعة');
+});
+
+test('isChannelAdmin allows owner/moderator and blocks regular members', () => {
+  const tech = INITIAL_CHANNELS.find((c) => c.id === 'ch-tech');
+  const oud = INITIAL_CHANNELS.find((c) => c.id === 'ch-oud');
+  assert.equal(isChannelAdmin(tech, '@ahmed21'), true);
+  assert.equal(isChannelAdmin(tech, '@faisal_d'), false);
+  assert.equal(isChannelAdmin(oud, '@ahmed21'), false);
+  assert.equal(isChannelAdmin(oud, '@sarah_oud'), true);
+});
+
+test('canUserPostInGroup enforces customizable group posting policies', () => {
+  const techThread = INITIAL_CHAT_THREADS.find((t) => t.id === 'thr-grp-tech');
+  const techCh = INITIAL_CHANNELS.find((c) => c.id === 'ch-tech');
+  assert.equal(canUserPostInGroup(techThread, techCh, '@faisal_d').allowed, true);
+
+  const oudThread = INITIAL_CHAT_THREADS.find((t) => t.id === 'thr-grp-oud');
+  const oudCh = INITIAL_CHANNELS.find((c) => c.id === 'ch-oud');
+  const resMember = canUserPostInGroup(oudThread, oudCh, '@ahmed21');
+  assert.equal(resMember.allowed, false);
+  assert.equal(resMember.reason, 'admins_only');
+
+  const resOwner = canUserPostInGroup(oudThread, oudCh, '@sarah_oud');
+  assert.equal(resOwner.allowed, true);
+});
+
+test('sortChannelPostsPinnedFirst puts pinned posts first without mutating input', () => {
+  const sorted = sortChannelPostsPinnedFirst([
+    { ...INITIAL_POSTS[0], id: 'a', pinned: false },
+    { ...INITIAL_POSTS[0], id: 'b', pinned: true },
+  ]);
+  assert.equal(sorted[0].id, 'b');
+  assert.equal(sorted[1].id, 'a');
+});
+
+test('cart multi-select supports Select All, partial toggle, pruning, and Remove Selected', () => {
+  const sampleCart = [
+    { product: INITIAL_PRODUCTS[0], quantity: 2, selectedFinish: 'titanium' as const },
+    { product: INITIAL_PRODUCTS[1], quantity: 1, selectedFinish: 'gold' as const },
+  ];
+  const key0 = getCartItemKey(sampleCart[0]);
+  const key1 = getCartItemKey(sampleCart[1]);
+
+  // Select All selects all items
+  const allSelected = toggleSelectAllCartItems(sampleCart, []);
+  assert.deepEqual(allSelected, [key0, key1]);
+  assert.deepEqual(getCartSelectionState(sampleCart, allSelected), {
+    selectedCount: 2,
+    totalCount: 2,
+    allSelected: true,
+    someSelected: false,
+    selectedSubtotalUSD: Number(
+      (INITIAL_PRODUCTS[0].priceUSD * 2 + INITIAL_PRODUCTS[1].priceUSD).toFixed(2)
+    ),
+  });
+
+  // Uncheck one -> partial/indeterminate state
+  const partial = toggleCartItemSelection(allSelected, key0);
+  assert.deepEqual(partial, [key1]);
+  const partialState = getCartSelectionState(sampleCart, partial);
+  assert.equal(partialState.allSelected, false);
+  assert.equal(partialState.someSelected, true);
+  assert.equal(partialState.selectedCount, 1);
+
+  // Toggle Select All from partial -> selects all; toggle from all -> clears all
+  assert.deepEqual(toggleSelectAllCartItems(sampleCart, partial), [key0, key1]);
+  assert.deepEqual(toggleSelectAllCartItems(sampleCart, [key0, key1]), []);
+
+  // Remove selected deletes only checked items
+  const remaining = removeSelectedCartItems(sampleCart, partial);
+  assert.equal(remaining.length, 1);
+  assert.equal(getCartItemKey(remaining[0]), key0);
+
+  // Prune drops stale keys when items leave the cart
+  assert.deepEqual(pruneSelectedCartKeys(remaining, [key0, key1]), [key0]);
 });
 

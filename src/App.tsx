@@ -11,6 +11,7 @@ import {
 } from './components/Navbar';
 import { ProductDetailModal } from './components/ProductDetailModal';
 import { ProfilePage, ProfileSubTab } from './components/ProfilePage';
+import { removeSelectedCartItems } from './utils/commerceLogic';
 import {
   INITIAL_CHAT_MESSAGES,
   INITIAL_CHAT_THREADS,
@@ -33,6 +34,8 @@ import {
   ChatThread,
   CurrencyBalance,
   ExternalWalletConnection,
+  ForwardedChannelPostSummary,
+  GroupPermissions,
   Language,
   MessageMediaAttachment,
   OrderRecord,
@@ -594,29 +597,79 @@ export default function App() {
     }
   };
 
-  const handlePublishPost = async (post: ChannelPost) => {
+  const handlePublishPost = async (post: ChannelPost): Promise<boolean> => {
     const res = await fetch('/api/posts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(post),
     });
-    if (res.ok) {
-      setPosts((prev) => [post, ...prev]);
-      showToast(lang === 'ar' ? 'تم النشر في القناة.' : 'Published to channel.');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(
+        data.error ||
+          (lang === 'ar'
+            ? 'النشر في القناة متاح للمشرفين فقط.'
+            : 'Channel publishing is restricted to admins.')
+      );
+      return false;
     }
+    setPosts((prev) => [data.post || post, ...prev]);
+    showToast(lang === 'ar' ? 'تم النشر في القناة.' : 'Published to channel.');
+    return true;
   };
 
-  const handlePublishProduct = async (product: Product) => {
+  const handlePublishProduct = async (product: Product): Promise<boolean> => {
     const res = await fetch('/api/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ product, createPost: true }),
     });
-    const data = await res.json();
-    if (res.ok) {
-      setProducts((prev) => [product, ...prev]);
-      if (data.post) setPosts((prev) => [data.post, ...prev]);
-      showToast(lang === 'ar' ? 'تم نشر المنتج داخل القناة.' : 'Product published to channel.');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(
+        data.error ||
+          (lang === 'ar'
+            ? 'نشر المنتجات في القناة متاح للمشرفين فقط.'
+            : 'Publishing products is restricted to channel admins.')
+      );
+      return false;
+    }
+    setProducts((prev) => [product, ...prev]);
+    if (data.post) setPosts((prev) => [data.post, ...prev]);
+    showToast(lang === 'ar' ? 'تم نشر المنتج داخل القناة.' : 'Product published to channel.');
+    return true;
+  };
+
+  const handlePinPost = async (postId: string) => {
+    const res = await fetch(`/api/posts/${postId}/pin`, { method: 'PATCH' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.error || (lang === 'ar' ? 'فشل تحديث التثبيت.' : 'Unable to pin post.'));
+      return;
+    }
+    if (data.post) {
+      setPosts((prev) => prev.map((p) => (p.id === postId ? data.post : p)));
+      showToast(
+        data.post.pinned
+          ? lang === 'ar'
+            ? 'تم تثبيت المنشور في أعلى القناة.'
+            : 'Post pinned to channel top.'
+          : lang === 'ar'
+          ? 'تم إلغاء تثبيت المنشور.'
+          : 'Post unpinned.'
+      );
+    }
+  };
+
+  const handleVotePoll = async (postId: string, optionId: string) => {
+    const res = await fetch(`/api/posts/${postId}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ optionId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.post) {
+      setPosts((prev) => prev.map((p) => (p.id === postId ? data.post : p)));
     }
   };
 
@@ -679,16 +732,45 @@ export default function App() {
     }
   };
 
-  const handleToggleMemberMute = async (channelId: string, memberId: string) => {
-    const ch = channels.find((c) => c.id === channelId);
-    if (!ch) return;
-    const updatedMembers = ch.members.map((m) => (m.id === memberId ? { ...m, muted: !m.muted } : m));
-    setChannels((prev) => prev.map((c) => (c.id === channelId ? { ...c, members: updatedMembers } : c)));
-    await fetch(`/api/channels/${channelId}`, {
+  const handleUpdateMemberRole = async (
+    channelId: string,
+    memberId: string,
+    patch: { role?: 'moderator' | 'member'; muted?: boolean; canPost?: boolean }
+  ) => {
+    const res = await fetch(`/api/channels/${channelId}/members/${memberId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ members: updatedMembers }),
+      body: JSON.stringify(patch),
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.error || (lang === 'ar' ? 'تعذر تحديث صلاحية العضو.' : 'Unable to update member.'));
+      return;
+    }
+    if (data.channel) {
+      setChannels((prev) => prev.map((c) => (c.id === channelId ? data.channel : c)));
+    }
+  };
+
+  const handleAddMember = async (
+    channelId: string,
+    payload: { name: string; handle: string; role: 'moderator' | 'member' }
+  ): Promise<boolean> => {
+    const res = await fetch(`/api/channels/${channelId}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.error || (lang === 'ar' ? 'تعذر إضافة العضو.' : 'Unable to add member.'));
+      return false;
+    }
+    if (data.channel) {
+      setChannels((prev) => prev.map((c) => (c.id === channelId ? data.channel : c)));
+      showToast(lang === 'ar' ? 'تمت إضافة العضو إلى القناة.' : 'Member added to channel.');
+    }
+    return true;
   };
 
   const handleToggleLinkedGroup = async (channelId: string) => {
@@ -737,26 +819,74 @@ export default function App() {
     }
   };
 
+  const handleJoinChannelGroup = async (channelId: string) => {
+    const res = await fetch('/api/chats/join-group', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.thread) {
+      if (Array.isArray(data.threads)) setThreads(data.threads);
+      if (data.channel) {
+        setChannels((prev) => prev.map((c) => (c.id === channelId ? data.channel : c)));
+      }
+      setActiveChatId(data.thread.id);
+      showToast(lang === 'ar' ? 'تم الانضمام للمجموعة.' : 'Joined discussion group.');
+    }
+  };
+
+  const handleUpdateGroupPermissions = async (
+    threadId: string,
+    permissions: Partial<GroupPermissions>
+  ) => {
+    const res = await fetch(`/api/threads/${threadId}/permissions`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(permissions),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.error || (lang === 'ar' ? 'فشل تحديث صلاحيات المجموعة.' : 'Unable to update group permissions.'));
+      return;
+    }
+    if (data.thread) {
+      setThreads((prev) => prev.map((tr) => (tr.id === threadId ? data.thread : tr)));
+    }
+    if (data.channel) {
+      setChannels((prev) => prev.map((c) => (c.id === data.channel.id ? data.channel : c)));
+    }
+    showToast(lang === 'ar' ? 'تم حفظ صلاحيات المجموعة.' : 'Group permissions updated.');
+  };
+
   const handleSendMessage = async (payload: {
     threadId: string;
     text: string;
     attachedProductId?: string;
     replyTo?: ChatMessage['replyTo'];
     forwardedFrom?: string;
+    forwardedPost?: ForwardedChannelPostSummary;
     media?: MessageMediaAttachment;
-  }) => {
+  }): Promise<boolean> => {
     const msg: ChatMessage = {
       id: `cm-${Date.now()}`,
       threadId: payload.threadId,
       authorName: profile.name,
       authorHandle: profile.username,
       authorRole: 'me',
-      text: payload.text || (payload.attachedProductId && !payload.media ? (lang === 'ar' ? 'استفسار حول المنتج المرفق' : 'Product inquiry') : ''),
+      text:
+        payload.text ||
+        (payload.attachedProductId && !payload.media && !payload.forwardedPost
+          ? lang === 'ar'
+            ? 'استفسار حول المنتج المرفق'
+            : 'Product inquiry'
+          : ''),
       timestamp: lang === 'ar' ? 'الآن' : 'Now',
       deliveryStatus: 'delivered',
       attachedProductId: payload.attachedProductId,
       replyTo: payload.replyTo,
       forwardedFrom: payload.forwardedFrom,
+      forwardedPost: payload.forwardedPost,
       media: payload.media,
       reactions: 0,
     };
@@ -765,8 +895,35 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(msg),
     });
-    if (res.ok) {
-      setMessages((prev) => [...prev, msg]);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.error || (lang === 'ar' ? 'غير مسموح بالإرسال في هذه المجموعة.' : 'Sending is restricted here.'));
+      return false;
+    }
+    setMessages((prev) => [...prev, data.message || msg]);
+    return true;
+  };
+
+  const handleForwardPostToThread = async (post: ChannelPost, targetThreadId: string) => {
+    const ch = channels.find((c) => c.id === post.channelId);
+    const ok = await handleSendMessage({
+      threadId: targetThreadId,
+      text: '',
+      forwardedFrom: ch ? (lang === 'ar' ? ch.name : ch.nameEn) : 'Store-21',
+      forwardedPost: {
+        postId: post.id,
+        channelId: post.channelId,
+        channelName: ch ? (lang === 'ar' ? ch.name : ch.nameEn) : 'Store-21',
+        channelAvatar: ch?.avatarImage || '',
+        text: (lang === 'ar' ? post.text : post.textEn).slice(0, 180),
+        image: post.image,
+        productId: post.productId,
+      },
+    });
+    if (ok) {
+      handleSelectChatThread(targetThreadId);
+      setActiveSection('chats');
+      showToast(lang === 'ar' ? 'تم تحويل المنشور بنجاح.' : 'Post forwarded.');
     }
   };
 
@@ -906,6 +1063,16 @@ export default function App() {
     setCart((prev) => prev.filter((c) => c.product.id !== productId));
   };
 
+  const handleRemoveSelectedCartItems = (selectedKeys: string[]) => {
+    if (selectedKeys.length === 0) return;
+    setCart((prev) => removeSelectedCartItems(prev, selectedKeys));
+    showToast(
+      lang === 'ar'
+        ? `تمت إزالة ${selectedKeys.length} منتج من السلة.`
+        : `Removed ${selectedKeys.length} selected item(s) from cart.`
+    );
+  };
+
   if (loggedOut) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#F8F9FA] p-6 text-[#141518]">
@@ -957,12 +1124,18 @@ export default function App() {
       />
 
       {toast && (
-        <div className="fixed bottom-20 end-4 z-50 rounded-xl border border-[#A7F3D0] bg-[#141518] px-4 py-2.5 text-xs font-semibold text-white shadow-xl md:bottom-6">
+        <div className="fixed bottom-20 end-4 z-[60] rounded-xl border border-[#A7F3D0] bg-[#141518] px-4 py-2.5 text-xs font-semibold text-white shadow-xl md:bottom-6">
           {toast}
         </div>
       )}
 
-      <div className="mx-auto flex max-w-[1360px] items-start gap-6 px-4 py-6 sm:px-6">
+      <div
+        className={`mx-auto flex max-w-[1360px] items-start gap-6 ${
+          activeSection === 'chats' || activeSection === 'channels'
+            ? 'px-0 py-0 sm:px-6 sm:py-6'
+            : 'px-3 py-4 sm:px-6 sm:py-6'
+        }`}
+      >
         <DesktopSidebar
           lang={lang}
           activeSection={activeSection}
@@ -996,6 +1169,7 @@ export default function App() {
           {activeSection === 'chats' && (
             <ChatsPage
               lang={lang}
+              userHandle={profile.username}
               threads={threads}
               messages={messages}
               products={products}
@@ -1014,23 +1188,32 @@ export default function App() {
                 setActiveChannelId(chId);
                 setActiveSection('channels');
               }}
+              onUpdateGroupPermissions={handleUpdateGroupPermissions}
+              onUpdateMemberRole={handleUpdateMemberRole}
+              onJoinChannelGroup={handleJoinChannelGroup}
             />
           )}
 
           {activeSection === 'channels' && (
             <ChannelsPage
               lang={lang}
+              userHandle={profile.username}
+              userName={profile.name}
               channels={channels}
               activeChannelId={activeChannelId}
               onSelectChannel={setActiveChannelId}
               posts={posts}
               products={products}
+              threads={threads}
               integrations={integrations}
               onToggleFollow={handleToggleFollow}
               onToggleMute={handleToggleMute}
               onCreateChannel={handleCreateChannel}
               onPublishPost={handlePublishPost}
               onPublishProduct={handlePublishProduct}
+              onPinPost={handlePinPost}
+              onVotePoll={handleVotePoll}
+              onForwardPost={handleForwardPostToThread}
               onOpenProduct={(prod, mode = 'images') =>
                 setSelectedProductModal({ productId: prod.id, mode })
               }
@@ -1039,12 +1222,18 @@ export default function App() {
               onAddComment={handleAddComment}
               onSendLiveChat={handleSendLiveChat}
               onToggleLiveStatus={handleToggleLiveStatus}
-              onOpenLinkedGroup={(groupId) => {
-                handleSelectChatThread(groupId);
+              onOpenLinkedGroup={async (groupId, channelId) => {
+                const exists = threads.some((t) => t.id === groupId);
+                if (!exists && channelId) {
+                  await handleJoinChannelGroup(channelId);
+                } else {
+                  handleSelectChatThread(groupId);
+                }
                 setActiveSection('chats');
               }}
               onContactOwner={handleContactSeller}
-              onToggleMemberMute={handleToggleMemberMute}
+              onUpdateMemberRole={handleUpdateMemberRole}
+              onAddMember={handleAddMember}
               onToggleLinkedGroup={handleToggleLinkedGroup}
               onConnectIntegration={handleConnectIntegration}
               onSyncIntegration={handleSyncIntegration}
@@ -1111,6 +1300,7 @@ export default function App() {
         cart={cart}
         onUpdateQty={handleUpdateCartQty}
         onRemoveItem={handleRemoveCartItem}
+        onRemoveSelectedItems={handleRemoveSelectedCartItems}
         onProceedToWallet={() => {
           setProfileTab('wallet');
           setActiveSection('profile');

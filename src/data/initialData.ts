@@ -87,15 +87,21 @@ export const INITIAL_CHANNELS: StoreChannel[] = [
     linkedGroupNameEn: 'Advanced Tech Community',
     linkedGroupDescription: 'مساحة حوار الأعضاء حول تجارب الأجهزة الصوتية والساعات والدعم الفني.',
     linkedGroupDescriptionEn: 'Subscriber discussion room for studio audio tips, setup questions, and support.',
+    groupPermissions: {
+      postingPolicy: 'all',
+      allowMedia: true,
+      allowProductLinks: true,
+      allowMemberReplies: true,
+    },
     externalLinks: [
       { label: 'Storefront Catalog', url: 'https://advanced-tech.example.com' },
       { label: 'Warranty & Care', url: 'https://advanced-tech.example.com/warranty' },
     ],
     connectedPlatforms: ['shopify'],
     members: [
-      { id: 'mem-1', name: 'طارق المنصور', handle: '@tariq', role: 'owner', muted: false, joinedAt: '2025-09-12' },
-      { id: 'mem-2', name: 'أحمد محمد', handle: '@ahmed21', role: 'moderator', muted: false, joinedAt: '2026-01-08' },
-      { id: 'mem-3', name: 'فيصل الدوسري', handle: '@faisal_d', role: 'member', muted: false, joinedAt: '2026-04-19' },
+      { id: 'mem-1', name: 'طارق المنصور', handle: '@tariq', role: 'owner', muted: false, canPost: true, joinedAt: '2025-09-12' },
+      { id: 'mem-2', name: 'أحمد محمد', handle: '@ahmed21', role: 'moderator', muted: false, canPost: true, joinedAt: '2026-01-08' },
+      { id: 'mem-3', name: 'فيصل الدوسري', handle: '@faisal_d', role: 'member', muted: false, canPost: true, joinedAt: '2026-04-19' },
     ],
   },
   {
@@ -121,13 +127,20 @@ export const INITIAL_CHANNELS: StoreChannel[] = [
     linkedGroupNameEn: 'Fragrance Collectors Group',
     linkedGroupDescription: 'نقاشات المقتنين حول ثبات العطور والنوتات العطرية وإطلاقات الدفعات.',
     linkedGroupDescriptionEn: 'Collector discussions on notes, maceration, and seasonal extrait releases.',
+    groupPermissions: {
+      postingPolicy: 'admins_only',
+      allowMedia: true,
+      allowProductLinks: true,
+      allowMemberReplies: true,
+    },
     externalLinks: [
       { label: 'Salla Boutique', url: 'https://amber-beauty.example.com' },
     ],
     connectedPlatforms: ['salla'],
     members: [
-      { id: 'mem-4', name: 'سارة العتيبي', handle: '@sarah_oud', role: 'owner', muted: false, joinedAt: '2025-11-01' },
-      { id: 'mem-5', name: 'ريم القحطاني', handle: '@reem_q', role: 'member', muted: false, joinedAt: '2026-03-14' },
+      { id: 'mem-4', name: 'سارة العتيبي', handle: '@sarah_oud', role: 'owner', muted: false, canPost: true, joinedAt: '2025-11-01' },
+      { id: 'mem-5', name: 'ريم القحطاني', handle: '@reem_q', role: 'member', muted: false, canPost: true, joinedAt: '2026-03-14' },
+      { id: 'mem-8', name: 'أحمد محمد', handle: '@ahmed21', role: 'member', muted: false, canPost: true, joinedAt: '2026-04-02' },
     ],
   },
   {
@@ -153,12 +166,18 @@ export const INITIAL_CHANNELS: StoreChannel[] = [
     linkedGroupNameEn: 'Workspace Design Circle',
     linkedGroupDescription: 'تبادل أفكار تنسيق المكاتب والإضاءة الهادئة وخامات العمل.',
     linkedGroupDescriptionEn: 'Community desk setups, warm architectural lighting, and material care.',
+    groupPermissions: {
+      postingPolicy: 'all',
+      allowMedia: true,
+      allowProductLinks: true,
+      allowMemberReplies: true,
+    },
     externalLinks: [
       { label: 'Design Journal', url: 'https://atelier-objects.example.com' },
     ],
     connectedPlatforms: ['woocommerce'],
     members: [
-      { id: 'mem-6', name: 'ليلى رشيد', handle: '@layla_studio', role: 'owner', muted: false, joinedAt: '2026-02-02' },
+      { id: 'mem-6', name: 'ليلى رشيد', handle: '@layla_studio', role: 'owner', muted: false, canPost: true, joinedAt: '2026-02-02' },
     ],
   },
   {
@@ -184,12 +203,19 @@ export const INITIAL_CHANNELS: StoreChannel[] = [
     linkedGroupNameEn: 'Noor Horology Guild',
     linkedGroupDescription: 'استشارات المقتنين حول صيانة الساعات وتأمين وحدات الحفظ البارد.',
     linkedGroupDescriptionEn: 'Horology collectors & hardware custody verification best practices.',
+    groupPermissions: {
+      postingPolicy: 'approved_only',
+      allowMedia: true,
+      allowProductLinks: true,
+      allowMemberReplies: true,
+    },
     externalLinks: [
       { label: 'Horology Archive', url: 'https://noor-horology.example.com' },
     ],
     connectedPlatforms: ['zid'],
     members: [
-      { id: 'mem-7', name: 'كريم الحسن', handle: '@kareem_h', role: 'owner', muted: false, joinedAt: '2025-10-18' },
+      { id: 'mem-7', name: 'كريم الحسن', handle: '@kareem_h', role: 'owner', muted: false, canPost: true, joinedAt: '2025-10-18' },
+      { id: 'mem-9', name: 'أحمد محمد', handle: '@ahmed21', role: 'moderator', muted: false, canPost: true, joinedAt: '2026-02-15' },
     ],
   },
 ];
@@ -394,6 +420,10 @@ export const INITIAL_POSTS: ChannelPost[] = [
     id: 'post-prod-1',
     channelId: 'ch-tech',
     type: 'product',
+    authorName: 'طارق المنصور',
+    authorHandle: '@tariq',
+    pinned: true,
+    allowComments: true,
     text: 'سماعات لاسلكية بتقنية إلغاء الضوضاء — متوفرة الآن مع عرض ثلاثي الأبعاد تفاعلي قبل الطلب.',
     textEn: 'Reference Studio Wireless Headphones M1 — now in stock with optional 3D inspection.',
     productId: 'prod-headphone-01',
@@ -403,6 +433,25 @@ export const INITIAL_POSTS: ChannelPost[] = [
     comments: [
       { id: 'c-3', author: 'يوسف', text: 'التصميم ثلاثي الأبعاد ممتاز لتفقد تفاصيل الوسائد.', timestamp: 'قبل 12د' },
     ],
+  },
+  {
+    id: 'post-poll-1',
+    channelId: 'ch-tech',
+    type: 'poll',
+    authorName: 'أحمد محمد',
+    authorHandle: '@ahmed21',
+    allowComments: true,
+    text: 'ما اللون المفضل لديكم لإصدار الدفعة القادمة من سماعات M1؟',
+    textEn: 'Which finish should we prioritize for the next M1 Studio batch?',
+    pollOptions: [
+      { id: 'opt-1', text: 'تيتانيوم داكن · Dark Titanium', votes: 142, votedByHandles: [] },
+      { id: 'opt-2', text: 'بلاتينيوم فضي · Silver Platinum', votes: 98, votedByHandles: [] },
+      { id: 'opt-3', text: 'برونز نحاسي · Warm Copper', votes: 64, votedByHandles: [] },
+    ],
+    timestamp: 'قبل 45 دقيقة',
+    viewsCount: 1480,
+    reactions: { heart: 88, thumbs: 54, fire: 19 },
+    comments: [],
   },
   {
     id: 'post-ann-1',
@@ -457,6 +506,12 @@ export const INITIAL_CHAT_THREADS: ChatThread[] = [
     membersCount: 3420,
     unreadCount: 2,
     pinned: true,
+    groupPermissions: {
+      postingPolicy: 'all',
+      allowMedia: true,
+      allowProductLinks: true,
+      allowMemberReplies: true,
+    },
   },
   {
     id: 'thr-dir-tech',
@@ -479,12 +534,18 @@ export const INITIAL_CHAT_THREADS: ChatThread[] = [
     channelId: 'ch-oud',
     title: 'نادي عشاق العطور والجمال',
     titleEn: 'Fragrance Collectors Group',
-    subtitle: 'مجموعة عملاء قناة عالم الجمال والعطور',
-    subtitleEn: 'Linked community group for Amber & Beauty Atelier',
+    subtitle: 'مجموعة عملاء قناة عالم الجمال والعطور (إعلانات المشرفين)',
+    subtitleEn: 'Linked community group for Amber & Beauty Atelier (Admins only)',
     avatar: PRODUCT_IMAGES.perfume,
     verified: true,
     membersCount: 1840,
     unreadCount: 0,
+    groupPermissions: {
+      postingPolicy: 'admins_only',
+      allowMedia: true,
+      allowProductLinks: true,
+      allowMemberReplies: true,
+    },
   },
   {
     id: 'thr-dir-oud',

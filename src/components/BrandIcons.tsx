@@ -1,28 +1,28 @@
 import React from 'react';
-import { BlockchainNetwork, CryptoCurrency, PlatformId } from '../types/commerce';
+import { PlatformId, WalletProviderId } from '../types/commerce';
 
-export const SouqChainMark: React.FC<{ className?: string }> = ({ className = 'h-6 w-6' }) => (
-  <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
+export const Store21Mark: React.FC<{ className?: string }> = ({ className = 'h-8 w-8' }) => (
+  <svg viewBox="0 0 36 36" fill="none" className={className} aria-hidden="true">
+    <rect width="36" height="36" rx="10" fill="#059669" />
     <path
-      d="M16 3L27 9.5V22.5L16 29L5 22.5V9.5L16 3Z"
-      stroke="#E5B84B"
-      strokeWidth="2"
+      d="M11 14.5L13.2 10.5H22.8L25 14.5V24.5C25 25.328 24.328 26 23.5 26H12.5C11.672 26 11 25.328 11 24.5V14.5Z"
+      stroke="#FFFFFF"
+      strokeWidth="1.9"
       strokeLinejoin="round"
     />
     <path
-      d="M16 3V16M16 16L27 9.5M16 16L5 9.5M16 16V29"
-      stroke="#E5B84B"
-      strokeOpacity="0.6"
-      strokeWidth="1.6"
-      strokeLinejoin="round"
+      d="M15 16V14.5C15 12.843 16.343 11.5 18 11.5C19.657 11.5 21 12.843 21 14.5V16"
+      stroke="#FFFFFF"
+      strokeWidth="1.9"
+      strokeLinecap="round"
     />
-    <circle cx="16" cy="16" r="3" fill="#E5B84B" />
+    <circle cx="18" cy="20.5" r="2.1" fill="#FFFFFF" />
   </svg>
 );
 
 export const PlatformLogo: React.FC<{ id: PlatformId; className?: string }> = ({
   id,
-  className = 'h-7 w-7',
+  className = 'h-8 w-8',
 }) => {
   switch (id) {
     case 'salla':
@@ -78,108 +78,65 @@ export const PlatformLogo: React.FC<{ id: PlatformId; className?: string }> = ({
           <circle cx="22.5" cy="16" r="2.8" stroke="#E9D5FF" strokeWidth="2" />
         </svg>
       );
-    case 'amazon':
-      return (
-        <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
-          <rect width="32" height="32" rx="8" fill="#1E293B" />
-          <path
-            d="M12.5 17.5V13.5C12.5 11.8 14 10.5 16 10.5C18 10.5 19.5 11.8 19.5 13.5V17.5M19.5 15.5C17.5 15 12.5 15.2 12.5 17.2C12.5 18.7 15.5 19.2 19.5 17.5"
-            stroke="#F59E0B"
-            strokeWidth="1.9"
-            strokeLinecap="round"
-          />
-          <path
-            d="M9.5 21.5C13.5 23.8 18.5 23.8 22.5 21.5"
-            stroke="#F59E0B"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      );
-    case 'magento':
-      return (
-        <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
-          <rect width="32" height="32" rx="8" fill="#7C2D12" />
-          <path
-            d="M16 7.5L23.5 11.8V20.5L20.5 22.2V13.5L16 10.9L11.5 13.5V22.2L8.5 20.5V11.8L16 7.5Z"
-            fill="#FDBA74"
-          />
-          <path d="M16 14.5L18 15.6V23.2L16 24.4L14 23.2V15.6L16 14.5Z" fill="#FDBA74" />
-        </svg>
-      );
   }
 };
 
-export const NetworkLogo: React.FC<{ network: BlockchainNetwork; className?: string }> = ({
-  network,
-  className = 'h-4 w-4',
+export const WalletProviderLogo: React.FC<{ provider: WalletProviderId; className?: string }> = ({
+  provider,
+  className = 'h-7 w-7',
 }) => {
-  switch (network) {
-    case 'polygon':
+  switch (provider) {
+    case 'metamask':
       return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
+          <rect width="32" height="32" rx="16" fill="#FFF4ED" />
+          <path d="M9 9L15 13.5L14 17.5L9 14.5V9Z" fill="#E2761B" />
+          <path d="M23 9L17 13.5L18 17.5L23 14.5V9Z" fill="#E4761B" />
+          <path d="M10.5 21.5L14 17.5L16 19.5L18 17.5L21.5 21.5L16 24L10.5 21.5Z" fill="#F6851B" />
+        </svg>
+      );
+    case 'trust':
+      return (
+        <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
+          <rect width="32" height="32" rx="16" fill="#EFF6FF" />
           <path
-            d="M15.5 8.5L18.5 10.2V13.7L15.5 15.5L12.5 13.7V10.2L9.5 8.5L6.5 10.2V13.7L9.5 15.5"
-            stroke="#A855F7"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+            d="M16 7L23 10.2V16.2C23 20.5 19.9 23.8 16 25C12.1 23.8 9 20.5 9 16.2V10.2L16 7Z"
+            fill="#0500FF"
+          />
+          <path
+            d="M16 9.5L20.5 11.6V16C20.5 19 18.4 21.4 16 22.3C13.6 21.4 11.5 19 11.5 16V11.6L16 9.5Z"
+            stroke="#FFFFFF"
+            strokeWidth="1.6"
           />
         </svg>
       );
-    case 'ethereum':
+    case 'coinbase':
       return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-          <path d="M12 3L17.5 12L12 15.2L6.5 12L12 3Z" stroke="#93C5FD" strokeWidth="1.8" strokeLinejoin="round" />
-          <path d="M12 21L17.5 14L12 17.2L6.5 14L12 21Z" stroke="#93C5FD" strokeWidth="1.8" strokeLinejoin="round" />
+        <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
+          <rect width="32" height="32" rx="16" fill="#0052FF" />
+          <circle cx="16" cy="16" r="7.5" fill="#FFFFFF" />
+          <rect x="13.5" y="13.5" width="5" height="5" rx="1.2" fill="#0052FF" />
         </svg>
       );
-    case 'arbitrum':
+    case 'walletconnect':
       return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-          <path d="M12 3L20 7.5V16.5L12 21L4 16.5V7.5L12 3Z" stroke="#38BDF8" strokeWidth="1.8" />
-          <path d="M9 16L12 8.5L15 16" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" />
-        </svg>
-      );
-    case 'base':
-      return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-          <circle cx="12" cy="12" r="8.5" stroke="#3B82F6" strokeWidth="2" />
-          <path d="M7 12H15" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" />
+        <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
+          <rect width="32" height="32" rx="16" fill="#EFF6FF" />
+          <path
+            d="M10.5 13.5C13.5 10.5 18.5 10.5 21.5 13.5L22.3 14.3L19.8 16.8L18.2 15.2C17 14 15 14 13.8 15.2L12.2 16.8L9.7 14.3L10.5 13.5Z"
+            fill="#3B99FC"
+          />
+          <path d="M13 18.5L16 21.5L19 18.5" stroke="#3B99FC" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
     case 'solana':
       return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-          <path d="M6 8H18L16 10.5H4L6 8Z" fill="#2DD4BF" />
-          <path d="M4 13.5H16L18 16H6L4 13.5Z" fill="#2DD4BF" />
+        <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
+          <rect width="32" height="32" rx="16" fill="#141518" />
+          <path d="M9 11H22L20 13.5H7L9 11Z" fill="#14F195" />
+          <path d="M7 15.5H20L22 18H9L7 15.5Z" fill="#00C2FF" />
+          <path d="M9 20H22L20 22.5H7L9 20Z" fill="#9945FF" />
         </svg>
       );
-  }
-};
-
-export const TokenLogo: React.FC<{ currency: CryptoCurrency; className?: string }> = ({
-  currency,
-  className = 'h-4 w-4',
-}) => {
-  switch (currency) {
-    case 'USDC':
-      return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-          <circle cx="12" cy="12" r="9.5" stroke="#38BDF8" strokeWidth="1.8" />
-          <path d="M12 7V17M14.2 9.5C13.7 8.8 10.3 8.8 10 10.2C9.7 11.7 14.3 11.8 14 13.6C13.7 15.1 10.2 15.2 9.6 14.2" stroke="#38BDF8" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-      );
-    case 'USDT':
-      return (
-        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-          <circle cx="12" cy="12" r="9.5" stroke="#10B981" strokeWidth="1.8" />
-          <path d="M8 8.5H16M12 8.5V16.5M8.5 12C8.5 12.8 15.5 12.8 15.5 12" stroke="#10B981" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-      );
-    case 'ETH':
-      return <NetworkLogo network="ethereum" className={className} />;
-    case 'SOL':
-      return <NetworkLogo network="solana" className={className} />;
   }
 };

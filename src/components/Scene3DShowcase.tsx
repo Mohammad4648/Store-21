@@ -3,37 +3,36 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import {
   Camera,
-  Check,
   Layers,
+  RotateCcw,
   RotateCw,
-  ShieldCheck,
-  ShoppingBag,
-  Sparkles,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { FINISH_LABELS } from '../data/initialData';
-import { Product, Product3DModelType, ProductFinish } from '../types/commerce';
+import { Language, Product, Product3DModelType, ProductFinish } from '../types/commerce';
 
-interface Scene3DShowcaseProps {
+interface Product3DCanvasProps {
+  lang: Language;
   product: Product;
-  allProducts: Product[];
-  onSelectProduct: (product: Product) => void;
   selectedFinish: ProductFinish;
   onSelectFinish: (finish: ProductFinish) => void;
-  onAddToCart: (product: Product, finish: ProductFinish) => void;
-  onInstantBuy: (product: Product, finish: ProductFinish) => void;
+  heightClass?: string;
 }
 
 type CameraPreset = 'hero' | 'top' | 'detail';
 
 const CAMERA_PRESETS: Record<
   CameraPreset,
-  { pos: [number, number, number]; target: [number, number, number]; label: string }
+  { pos: [number, number, number]; target: [number, number, number]; labelAr: string; labelEn: string }
 > = {
-  hero: { pos: [3.2, 2.2, 4.1], target: [0, 0.35, 0], label: 'كامل' },
-  top: { pos: [0.1, 4.8, 1.4], target: [0, 0.2, 0], label: 'علوي' },
-  detail: { pos: [1.7, 1.35, 2.2], target: [0, 0.45, 0], label: 'مقرّب' },
+  hero: { pos: [3.2, 2.2, 4.1], target: [0, 0.35, 0], labelAr: 'كامل', labelEn: 'Full' },
+  top: { pos: [0.1, 4.8, 1.4], target: [0, 0.2, 0], labelAr: 'علوي', labelEn: 'Top' },
+  detail: { pos: [1.7, 1.35, 2.2], target: [0, 0.45, 0], labelAr: 'مقرّب', labelEn: 'Detail' },
 };
 
 const FINISH_COLORS: Record<ProductFinish, { metal: number; roughness: number; metalness: number }> = {
@@ -45,6 +44,7 @@ const FINISH_COLORS: Record<ProductFinish, { metal: number; roughness: number; m
 
 const _camGoal = new THREE.Vector3();
 const _targetGoal = new THREE.Vector3();
+const _zoomVec = new THREE.Vector3();
 
 function detectSoftwareWebGL(): boolean {
   try {
@@ -136,10 +136,10 @@ function createWatchDialTexture(): THREE.CanvasTexture {
   ctx.fillStyle = '#F8FAFC';
   ctx.font = 'bold 20px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('SOUQCHAIN', cx, cy - 84);
+  ctx.fillText('STORE-21', cx, cy - 84);
   ctx.fillStyle = '#E5B84B';
   ctx.font = '13px monospace';
-  ctx.fillText('CHRONO · ON-CHAIN', cx, cy + 108);
+  ctx.fillText('CHRONO · TITANIUM', cx, cy + 108);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -208,11 +208,11 @@ function createVaultScreenTexture(): THREE.CanvasTexture {
   ctx.fillStyle = '#10B981';
   ctx.font = 'bold 26px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('EAL6+ VERIFIED', 256, 385);
+  ctx.fillText('EAL6+ HARDWARE', 256, 385);
 
   ctx.fillStyle = '#F8FAFC';
   ctx.font = '20px monospace';
-  ctx.fillText('0x94A2...3D12', 256, 425);
+  ctx.fillText('STORE-21 EDITION', 256, 425);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -245,36 +245,39 @@ interface ExplodablePart {
   explodeOffset: THREE.Vector3;
 }
 
-export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
+export const Product3DCanvas: React.FC<Product3DCanvasProps> = ({
+  lang,
   product,
-  allProducts,
-  onSelectProduct,
   selectedFinish,
   onSelectFinish,
-  onAddToCart,
-  onInstantBuy,
+  heightClass = 'h-[400px] sm:h-[460px]',
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [explodeAmount, setExplodeAmount] = useState(0);
   const [autoRotate, setAutoRotate] = useState(true);
   const [cameraPreset, setCameraPreset] = useState<CameraPreset>('hero');
   const [webglError, setWebglError] = useState(false);
+  const [glbNotice, setGlbNotice] = useState('');
+  const [loadingModel, setLoadingModel] = useState(false);
 
   const stateRef = useRef({
     modelType: product.model3d,
+    modelUrl: product.model3dUrl,
     finish: selectedFinish,
     explodeTarget: explodeAmount,
     autoRotate,
   });
 
   stateRef.current.modelType = product.model3d;
+  stateRef.current.modelUrl = product.model3dUrl;
   stateRef.current.finish = selectedFinish;
   stateRef.current.explodeTarget = explodeAmount;
   stateRef.current.autoRotate = autoRotate;
 
-  const rebuildModelRef = useRef<((type: Product3DModelType, finish: ProductFinish) => void) | null>(null);
+  const rebuildModelRef = useRef<((type: Product3DModelType, finish: ProductFinish, url?: string) => void) | null>(null);
   const updateFinishRef = useRef<((finish: ProductFinish) => void) | null>(null);
   const applyPresetRef = useRef<((preset: CameraPreset) => void) | null>(null);
+  const zoomDeltaRef = useRef<((factor: number) => void) | null>(null);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -334,8 +337,8 @@ export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = !isSoftwareGl;
     controls.dampingFactor = 0.06;
-    controls.minDistance = 2.0;
-    controls.maxDistance = 8.5;
+    controls.minDistance = 1.6;
+    controls.maxDistance = 9.0;
     controls.maxPolarAngle = Math.PI * 0.49;
     controls.target.set(...CAMERA_PRESETS.hero.target);
     controls.autoRotate = !isSoftwareGl && stateRef.current.autoRotate;
@@ -435,9 +438,15 @@ export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
     const productRoot = new THREE.Group();
     scene.add(productRoot);
 
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.setDRACOLoader(dracoLoader);
+
     let explodableParts: ExplodablePart[] = [];
     let primaryMetalMat: THREE.MeshPhysicalMaterial | null = null;
     let currentExplode = 0;
+    let disposed = false;
 
     function disposeGroup(group: THREE.Group) {
       group.traverse((obj) => {
@@ -464,7 +473,7 @@ export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
       });
     }
 
-    function buildProductModel(type: Product3DModelType, finish: ProductFinish) {
+    function buildProceduralModel(type: Product3DModelType, finish: ProductFinish) {
       disposeGroup(productRoot);
       explodableParts = [];
       const f = FINISH_COLORS[finish];
@@ -558,18 +567,6 @@ export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
         watchGroup.add(crown);
         registerPart(crown, new THREE.Vector3(0.55, 0, 0));
 
-        const pusherTop = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.12, 16), metalMat);
-        pusherTop.rotation.z = Math.PI / 2;
-        pusherTop.position.set(0.86, 0, -0.34);
-        watchGroup.add(pusherTop);
-        registerPart(pusherTop, new THREE.Vector3(0.45, 0, -0.2));
-
-        const pusherBot = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.12, 16), metalMat);
-        pusherBot.rotation.z = Math.PI / 2;
-        pusherBot.position.set(0.86, 0, 0.34);
-        watchGroup.add(pusherBot);
-        registerPart(pusherBot, new THREE.Vector3(0.45, 0, 0.2));
-
         const strapTop = new THREE.Group();
         const strapBot = new THREE.Group();
         for (let i = 0; i < 4; i++) {
@@ -633,19 +630,11 @@ export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
         bottleGroup.add(collar);
         registerPart(collar, new THREE.Vector3(0, 0.45, 0));
 
-        const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.12, 0.16, 24), darkChassisMat);
-        nozzle.position.y = 0.88;
-        bottleGroup.add(nozzle);
-        registerPart(nozzle, new THREE.Vector3(0, 0.72, 0));
-
         const capGroup = new THREE.Group();
         capGroup.position.y = 1.05;
         const capMain = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.36, 0.46, 32), metalMat);
         capMain.castShadow = true;
-        const capRing = new THREE.Mesh(new THREE.TorusGeometry(0.37, 0.025, 16, 36), darkChassisMat);
-        capRing.rotation.x = Math.PI / 2;
-        capRing.position.y = -0.18;
-        capGroup.add(capMain, capRing);
+        capGroup.add(capMain);
         bottleGroup.add(capGroup);
         registerPart(capGroup, new THREE.Vector3(0, 1.1, 0));
 
@@ -710,12 +699,6 @@ export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
         buildEarAssembly(-1);
         buildEarAssembly(1);
 
-        const volDial = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.05, 20), metalMat);
-        volDial.position.set(0.8, -0.62, 0.28);
-        volDial.rotation.x = Math.PI / 2;
-        hpGroup.add(volDial);
-        registerPart(volDial, new THREE.Vector3(0.7, -0.25, 0.35));
-
         productRoot.add(hpGroup);
       } else {
         const vaultGroup = new THREE.Group();
@@ -755,12 +738,6 @@ export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
         vaultGroup.add(pcbCore);
         registerPart(pcbCore, new THREE.Vector3(0, 0, 0.08));
 
-        const chip = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.05), metalMat);
-        chip.rotation.x = -0.32;
-        chip.position.set(0, 0.05, 0.06);
-        vaultGroup.add(chip);
-        registerPart(chip, new THREE.Vector3(0, 0.05, 0.35));
-
         const screen = new THREE.Mesh(
           new THREE.PlaneGeometry(0.95, 1.15),
           new THREE.MeshStandardMaterial({ map: vaultTex, roughness: 0.15, metalness: 0.2 })
@@ -777,12 +754,6 @@ export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
         vaultGroup.add(shieldGlass);
         registerPart(shieldGlass, new THREE.Vector3(0, 0.18, 0.95));
 
-        const bioRing = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.025, 16, 32), metalMat);
-        bioRing.rotation.x = -0.32;
-        bioRing.position.set(0, -0.58, 0.37);
-        vaultGroup.add(bioRing);
-        registerPart(bioRing, new THREE.Vector3(0, -0.15, 0.8));
-
         const sideRailL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.25, 0.2), metalMat);
         sideRailL.rotation.x = -0.32;
         sideRailL.position.set(-0.68, 0, 0);
@@ -795,29 +766,70 @@ export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
         vaultGroup.add(sideRailR);
         registerPart(sideRailR, new THREE.Vector3(0.55, 0, 0));
 
-        const orbitRing = new THREE.Mesh(new THREE.TorusGeometry(1.32, 0.016, 16, 72), metalMat);
-        orbitRing.rotation.x = Math.PI / 2.4;
-        vaultGroup.add(orbitRing);
-        registerPart(orbitRing, new THREE.Vector3(0, 0.45, 0));
-
         productRoot.add(vaultGroup);
       }
     }
 
-    buildProductModel(stateRef.current.modelType, stateRef.current.finish);
+    function loadProductModel(type: Product3DModelType, finish: ProductFinish, glbUrl?: string) {
+      setGlbNotice('');
+      if (glbUrl && glbUrl.trim()) {
+        setLoadingModel(true);
+        gltfLoader.load(
+          glbUrl.trim(),
+          (gltf) => {
+            if (disposed) return;
+            disposeGroup(productRoot);
+            explodableParts = [];
+            primaryMetalMat = null;
+            const model = gltf.scene;
+            model.traverse((child) => {
+              if ((child as THREE.Mesh).isMesh) {
+                child.castShadow = !isSoftwareGl;
+                child.receiveShadow = !isSoftwareGl;
+              }
+            });
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+            const scale = 2.1 / maxDim;
+            model.scale.setScalar(scale);
+            model.position.set(-center.x * scale, -box.min.y * scale - 0.26, -center.z * scale);
+            productRoot.add(model);
+            setLoadingModel(false);
+          },
+          undefined,
+          () => {
+            if (disposed) return;
+            setLoadingModel(false);
+            setGlbNotice(
+              lang === 'ar'
+                ? 'تعذر تحميل ملف GLB الخارجي — تم استخدام النموذج ثلاثي الأبعاد المدمج.'
+                : 'External GLB asset unavailable — displaying built-in 3D studio model.'
+            );
+            buildProceduralModel(type, finish);
+          }
+        );
+      } else {
+        setLoadingModel(false);
+        buildProceduralModel(type, finish);
+      }
+    }
 
-    rebuildModelRef.current = (type, finish) => {
-      buildProductModel(type, finish);
+    loadProductModel(stateRef.current.modelType, stateRef.current.finish, stateRef.current.modelUrl);
+
+    rebuildModelRef.current = (type, finish, url) => {
+      loadProductModel(type, finish, url);
       currentExplode = 0;
     };
 
     updateFinishRef.current = (finish) => {
-      if (!primaryMetalMat) return;
       const f = FINISH_COLORS[finish];
+      plinthTrimMat.color.setHex(f.metal);
+      if (!primaryMetalMat) return;
       primaryMetalMat.color.setHex(f.metal);
       primaryMetalMat.roughness = f.roughness;
       primaryMetalMat.metalness = f.metalness;
-      plinthTrimMat.color.setHex(f.metal);
     };
 
     applyPresetRef.current = (preset) => {
@@ -827,13 +839,22 @@ export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
       cameraTransitionActive = true;
     };
 
+    zoomDeltaRef.current = (factor) => {
+      cameraTransitionActive = false;
+      _zoomVec.copy(camera.position).sub(controls.target).multiplyScalar(factor);
+      const dist = _zoomVec.length();
+      if (dist >= controls.minDistance && dist <= controls.maxDistance) {
+        camera.position.copy(controls.target).add(_zoomVec);
+        controls.update();
+      }
+    };
+
     if (!isSoftwareGl) {
       renderer.compile(scene, camera);
     }
 
     const clock = new THREE.Clock();
     let frameId = 0;
-    let disposed = false;
 
     function afterDraw(cb: () => void) {
       const gl = renderer.getContext() as WebGL2RenderingContext;
@@ -921,6 +942,7 @@ export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
       cancelAnimationFrame(frameId);
       clearTimeout(frameId);
       resizeObserver.disconnect();
+      dracoLoader.dispose();
       controls.dispose();
       renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
       renderer.domElement.removeEventListener('webglcontextrestored', handleContextRestored);
@@ -939,208 +961,163 @@ export const Scene3DShowcase: React.FC<Scene3DShowcaseProps> = ({
   }, []);
 
   useEffect(() => {
-    rebuildModelRef.current?.(product.model3d, selectedFinish);
-  }, [product.id, product.model3d]);
+    rebuildModelRef.current?.(product.model3d, selectedFinish, product.model3dUrl);
+  }, [product.id, product.model3d, product.model3dUrl]);
 
   useEffect(() => {
     updateFinishRef.current?.(selectedFinish);
   }, [selectedFinish]);
 
-  const handlePresetClick = (preset: CameraPreset) => {
-    setCameraPreset(preset);
-    applyPresetRef.current?.(preset);
+  const handleResetView = () => {
+    setCameraPreset('hero');
+    setExplodeAmount(0);
+    setAutoRotate(true);
+    applyPresetRef.current?.('hero');
   };
 
   return (
-    <section id="showcase" className="py-6 lg:py-10">
-      <div className="mx-auto max-w-[1440px] px-4 sm:px-8">
-        <div className="grid grid-cols-1 items-center gap-8 rounded-2xl border border-[#E1E3E5] bg-white p-6 shadow-xs lg:grid-cols-12 lg:p-8">
-          {/* Right Column: Clean Minimal Product Pitch & Quick Buy */}
-          <div className="space-y-6 lg:col-span-5">
-            <div className="space-y-3">
-              <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#008060]">
-                <ShieldCheck className="h-4 w-4" />
-                <span>تجارة لا مركزية · دفع مضمون بالعقد الذكي</span>
-              </div>
-
-              <h1 className="font-display text-2xl font-extrabold leading-tight text-[#202223] sm:text-3xl lg:text-4xl">
-                متجرك ثلاثي الأبعاد مع الدفع بالبلوك تشين
-              </h1>
-
-              <p className="text-sm leading-relaxed text-[#6D7175]">
-                أنشئ قناة تلغرام لمتجرك، اعرض منتجاتك بتقنية 3D، أطلق بث تيك توك مباشر داخل القناة،
-                واربط متاجر سلة وزد وShopify بسهولة.
-              </p>
-            </div>
-
-            {/* Clean 2x2 Product Selector */}
-            <div className="grid grid-cols-2 gap-3">
-              {allProducts.slice(0, 4).map((item) => {
-                const isActive = item.id === product.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      onSelectProduct(item);
-                      onSelectFinish(item.finish);
-                    }}
-                    className={`flex items-center gap-3 rounded-xl border p-3 text-start transition-colors ${
-                      isActive
-                        ? 'border-[#008060] bg-[#EBF5F2]'
-                        : 'border-[#E1E3E5] bg-[#FAFBFB] hover:border-[#C9CCCF] hover:bg-white'
-                    }`}
-                  >
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      referrerPolicy="no-referrer"
-                      className="h-11 w-11 shrink-0 rounded-lg object-cover bg-[#F6F6F7]"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-xs font-bold text-[#202223]">{item.title}</div>
-                      <div className="mt-0.5 font-mono-data text-xs font-semibold text-[#008060]">
-                        {item.priceUSDC.toLocaleString()} USDC
-                      </div>
-                    </div>
-                    {isActive && <Check className="h-4 w-4 shrink-0 text-[#008060]" />}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Active Product Price & Simple Actions */}
-            <div className="flex flex-col gap-4 border-t border-[#E1E3E5] pt-5">
-              <div className="flex items-baseline justify-between gap-4">
-                <div>
-                  <div className="text-xs text-[#6D7175]">
-                    {product.category} · متوفر {product.stock}
-                  </div>
-                  <h2 className="mt-1 font-display text-lg font-bold text-[#202223]">
-                    {product.title}
-                  </h2>
-                </div>
-                <div className="shrink-0 font-mono-data text-2xl font-bold text-[#008060]">
-                  {product.priceUSDC.toLocaleString()} USDC
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => onInstantBuy(product, selectedFinish)}
-                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#008060] px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-[#006E52] whitespace-nowrap"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  <span>شراء بالبلوك تشين</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onAddToCart(product, selectedFinish)}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#C9CCCF] bg-white px-5 py-3 text-sm font-semibold text-[#202223] transition-colors hover:bg-[#F6F6F7] whitespace-nowrap"
-                >
-                  <ShoppingBag className="h-4 w-4" />
-                  <span>للسلة</span>
-                </button>
-              </div>
-            </div>
+    <div className="flex flex-col gap-3">
+      <div
+        className={`relative w-full overflow-hidden rounded-xl border border-[#E5E7EB] bg-[#0D1119] ${heightClass}`}
+      >
+        {webglError ? (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-8 text-center">
+            <img
+              src={product.image}
+              alt={lang === 'ar' ? product.title : product.titleEn}
+              referrerPolicy="no-referrer"
+              className="max-h-64 rounded-xl object-cover"
+            />
+            <p className="text-xs text-[#94A3B8]">
+              {lang === 'ar'
+                ? 'المعاينة ثلاثية الأبعاد غير متاحة على هذا الجهاز — يتم عرض الصورة عالية الدقة.'
+                : 'WebGL is unavailable on this device — showing fallback product image.'}
+            </p>
           </div>
+        ) : (
+          <div ref={mountRef} className="h-full w-full cursor-grab active:cursor-grabbing" />
+        )}
 
-          {/* Left Column: Unobstructed 3D Viewport + Clean Toolbar BELOW Canvas */}
-          <div className="flex flex-col gap-3 lg:col-span-7">
-            <div className="relative h-[400px] w-full overflow-hidden rounded-2xl border border-[#E1E3E5] bg-[#0D1119] sm:h-[460px]">
-              {webglError ? (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-8 text-center">
-                  <img
-                    src={product.image}
-                    alt={product.title}
-                    referrerPolicy="no-referrer"
-                    className="max-h-64 rounded-xl object-cover"
-                  />
-                  <p className="text-xs text-[#94A3B8]">معاينة ثنائية الأبعاد عالية الدقة</p>
-                </div>
-              ) : (
-                <div ref={mountRef} className="h-full w-full cursor-grab active:cursor-grabbing" />
-              )}
-            </div>
-
-            {/* Clean Single-Row Control Bar Outside/Below the 3D Canvas (Zero Overlap) */}
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[#E1E3E5] bg-[#FAFBFB] px-4 py-3">
-              <div className="flex items-center gap-2.5">
-                <Layers className="h-4 w-4 text-[#008060]" />
-                <label
-                  htmlFor="explode-range"
-                  className="text-xs font-semibold text-[#202223] whitespace-nowrap"
-                >
-                  تفكيك 3D
-                </label>
-                <input
-                  id="explode-range"
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={explodeAmount}
-                  onChange={(e) => setExplodeAmount(parseFloat(e.target.value))}
-                  className="h-1.5 w-24 cursor-pointer accent-[#008060]"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                {(Object.keys(FINISH_LABELS) as ProductFinish[]).map((fKey) => {
-                  const active = selectedFinish === fKey;
-                  return (
-                    <button
-                      key={fKey}
-                      type="button"
-                      title={FINISH_LABELS[fKey].label}
-                      onClick={() => onSelectFinish(fKey)}
-                      className={`h-5 w-5 rounded-full border-2 transition-transform ${
-                        active
-                          ? 'scale-110 border-[#202223] ring-2 ring-[#008060]/30'
-                          : 'border-[#C9CCCF] hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: FINISH_LABELS[fKey].hex }}
-                      aria-label={FINISH_LABELS[fKey].label}
-                    />
-                  );
-                })}
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <Camera className="me-1 h-4 w-4 text-[#6D7175]" />
-                {(Object.keys(CAMERA_PRESETS) as CameraPreset[]).map((pKey) => (
-                  <button
-                    key={pKey}
-                    type="button"
-                    onClick={() => handlePresetClick(pKey)}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap ${
-                      cameraPreset === pKey
-                        ? 'bg-[#008060] text-white'
-                        : 'border border-[#E1E3E5] bg-white text-[#202223] hover:bg-[#F1F2F4]'
-                    }`}
-                  >
-                    {CAMERA_PRESETS[pKey].label}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setAutoRotate((prev) => !prev)}
-                  title="تدوير تلقائي"
-                  className={`rounded-lg border p-1.5 transition-colors ${
-                    autoRotate
-                      ? 'border-[#008060] bg-[#EBF5F2] text-[#008060]'
-                      : 'border-[#E1E3E5] bg-white text-[#6D7175]'
-                  }`}
-                  aria-label="تدوير تلقائي"
-                >
-                  <RotateCw className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
+        {loadingModel && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#0D1119]/80 text-xs font-semibold text-white">
+            {lang === 'ar' ? 'جاري تحميل نموذج 3D...' : 'Loading 3D model...'}
           </div>
+        )}
+      </div>
+
+      {glbNotice && (
+        <p className="text-xs text-[#6B7280]">{glbNotice}</p>
+      )}
+
+      {/* Clean Interactive Controls Outside the Canvas */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#E5E7EB] bg-white px-4 py-3">
+        <div className="flex items-center gap-2.5">
+          <Layers className="h-4 w-4 text-[#059669]" />
+          <label
+            htmlFor="explode-range"
+            className="text-xs font-semibold text-[#141518] whitespace-nowrap"
+          >
+            {lang === 'ar' ? 'تفكيك' : 'Explode'}
+          </label>
+          <input
+            id="explode-range"
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={explodeAmount}
+            onChange={(e) => setExplodeAmount(parseFloat(e.target.value))}
+            className="h-1.5 w-20 cursor-pointer accent-[#059669]"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          {(Object.keys(FINISH_LABELS) as ProductFinish[]).map((fKey) => {
+            const active = selectedFinish === fKey;
+            const titleText =
+              lang === 'ar' ? FINISH_LABELS[fKey].label : FINISH_LABELS[fKey].labelEn;
+            return (
+              <button
+                key={fKey}
+                type="button"
+                title={titleText}
+                onClick={() => onSelectFinish(fKey)}
+                className={`h-5 w-5 rounded-full border-2 transition-transform ${
+                  active
+                    ? 'scale-110 border-[#141518] ring-2 ring-[#059669]/30'
+                    : 'border-[#D1D5DB] hover:scale-105'
+                }`}
+                style={{ backgroundColor: FINISH_LABELS[fKey].hex }}
+                aria-label={titleText}
+              />
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Camera className="me-0.5 h-4 w-4 text-[#6B7280]" />
+          {(Object.keys(CAMERA_PRESETS) as CameraPreset[]).map((pKey) => (
+            <button
+              key={pKey}
+              type="button"
+              onClick={() => {
+                setCameraPreset(pKey);
+                applyPresetRef.current?.(pKey);
+              }}
+              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap ${
+                cameraPreset === pKey
+                  ? 'bg-[#059669] text-white'
+                  : 'border border-[#E5E7EB] bg-[#F8F9FA] text-[#141518] hover:bg-white'
+              }`}
+            >
+              {lang === 'ar' ? CAMERA_PRESETS[pKey].labelAr : CAMERA_PRESETS[pKey].labelEn}
+            </button>
+          ))}
+
+          <button
+            type="button"
+            onClick={() => zoomDeltaRef.current?.(0.84)}
+            title={lang === 'ar' ? 'تكبير' : 'Zoom in'}
+            aria-label={lang === 'ar' ? 'تكبير' : 'Zoom in'}
+            className="rounded-lg border border-[#E5E7EB] bg-[#F8F9FA] p-1.5 text-[#141518] hover:bg-white"
+          >
+            <ZoomIn className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomDeltaRef.current?.(1.18)}
+            title={lang === 'ar' ? 'تصغير' : 'Zoom out'}
+            aria-label={lang === 'ar' ? 'تصغير' : 'Zoom out'}
+            className="rounded-lg border border-[#E5E7EB] bg-[#F8F9FA] p-1.5 text-[#141518] hover:bg-white"
+          >
+            <ZoomOut className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setAutoRotate((prev) => !prev)}
+            title={lang === 'ar' ? 'تدوير تلقائي' : 'Toggle rotation'}
+            aria-label={lang === 'ar' ? 'تدوير تلقائي' : 'Toggle rotation'}
+            className={`rounded-lg border p-1.5 transition-colors ${
+              autoRotate
+                ? 'border-[#059669] bg-[#ECFDF5] text-[#059669]'
+                : 'border-[#E5E7EB] bg-[#F8F9FA] text-[#6B7280]'
+            }`}
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleResetView}
+            title={lang === 'ar' ? 'إعادة ضبط العرض' : 'Reset view'}
+            aria-label={lang === 'ar' ? 'إعادة ضبط العرض' : 'Reset view'}
+            className="rounded-lg border border-[#E5E7EB] bg-[#F8F9FA] p-1.5 text-[#141518] hover:bg-white"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
-    </section>
+    </div>
   );
 };
+
+export default Product3DCanvas;
